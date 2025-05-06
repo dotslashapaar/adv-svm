@@ -259,6 +259,29 @@ impl VoteInstruction {
 }
 
 #[cfg(feature = "bincode")]
+pub fn fav_dish(
+    dish_name_pubkey: &Pubkey,
+    price_pubkey: &Pubkey,
+    authority_chef_pubkey: &Pubkey,
+    special_dish_pubkey: &Pubkey,
+    dish: Dish,
+) -> Instruction {
+    let account_metas = vec![
+        AccountMeta::new(*dish_name_pubkey, false),  // Writable but not a signer
+        AccountMeta::new_readonly(*price_pubkey, false),
+        AccountMeta::new_readonly(*authority_chef_pubkey, true),  // Read-only and a signer
+        AccountMeta::new_readonly(*special_dish_pubkey, false),
+    ];
+
+    Instruction::new_with_bincode(
+        id(),
+        &VoteInstruction::FavDish(dish),
+        account_metas,
+    )
+}
+
+
+#[cfg(feature = "bincode")]
 fn initialize_account(vote_pubkey: &Pubkey, vote_init: &VoteInit) -> Instruction {
     let account_metas = vec![
         AccountMeta::new(*vote_pubkey, false),

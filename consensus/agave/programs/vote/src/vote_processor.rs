@@ -65,8 +65,42 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
     let signers = instruction_context.get_signers(transaction_context)?;
     match limited_deserialize(data, solana_packet::PACKET_DATA_SIZE as u64)? {
         VoteInstruction::FavDish(dish) => {
+            instruction_context.check_number_of_instruction_accounts(4)?;
             
-        }
+            // Get the dish name account (writable)
+            let mut dish_name_account = instruction_context.try_borrow_instruction_account(transaction_context, 0)?;
+            
+            // Verify the authority chef has signed
+            if !instruction_context.is_instruction_account_signer(2)? {
+                return Err(InstructionError::MissingRequiredSignature);
+            }
+            
+            // Get the authority chef pubkey
+            let authority_chef = transaction_context.get_key_of_account_at_index(
+                instruction_context.get_index_of_instruction_account_in_transaction(2)?,
+            )?;
+            
+            // Verify the authority chef matches the one in the dish struct
+            if *authority_chef != dish.authorize_chef {
+                return Err(InstructionError::MissingRequiredSignature);
+            }
+            
+            // Validate that provided dish name account pubkey matches the one in the dish struct
+            if dish_name_account.get_key() != &dish.dish_name {
+                return Err(InstructionError::InvalidArgument);
+            }
+            
+            // Write the dish data to the dish name account
+            let dish_data = bincode::serialize(&dish).map_err(|_| InstructionError::GenericError)?;
+            let data = dish_name_account.get_data_mut()?;
+            if data.len() < dish_data.len() {
+                return Err(InstructionError::AccountDataTooSmall);
+            }
+            data[..dish_data.len()].copy_from_slice(&dish_data);
+            
+            Ok(())
+        }        
+        
 
         VoteInstruction::InitializeAccount(vote_init) => {
             let rent = get_sysvar_with_account_check::rent(invoke_context, instruction_context, 1)?;
@@ -215,9 +249,7 @@ declare_process_instruction!(Entrypoint, DEFAULT_COMPUTE_UNITS, |invoke_context|
             let clock =
                 get_sysvar_with_account_check::clock(invoke_context, instruction_context, 1)?;
             vote_state::authorize(&mut me, voter_pubkey, vote_authorize, &signers, &clock)
-        }
-
-        
+        }  
     }
 });
 
@@ -472,6 +504,57 @@ mod tests {
             ],
         )
     }
+
+    #[test]
+    fn test_fav_dish() {
+        let dish_name_pubkey = Pubkey::new_unique();
+        let price_pubkey = Pubkey::new_unique();
+        let authority_chef_pubkey = Pubkey::new_unique();
+        let special_dish_pubkey = Pubkey::new_unique();
+        
+        let dish = Dish {
+            dish_name: dish_name_pubkey,
+            price: 1000,
+            authorize_chef: authority_chef_pubkey,
+            special_dish: true,
+        };
+        
+        let instruction = fav_dish(
+            &dish_name_pubkey,
+            &price_pubkey,
+            &authority_chef_pubkey,
+            &special_dish_pubkey,
+            dish.clone(),
+        );
+        
+        // Create accounts with enough space
+        let mut dish_name_account = AccountSharedData::new(100, std::mem::size_of::<Dish>(), &id());
+        let price_account = AccountSharedData::default();
+        let authority_chef_account = AccountSharedData::default();
+        let special_dish_account = AccountSharedData::default();
+        
+        let transaction_accounts = vec![
+            (dish_name_pubkey, dish_name_account),
+            (price_pubkey, price_account),
+            (authority_chef_pubkey, authority_chef_account),
+            (special_dish_pubkey, special_dish_account),
+        ];
+        
+        // Process the instruction
+        let accounts = process_instruction(
+            &instruction.data,
+            transaction_accounts,
+            instruction.accounts.clone(),
+            Ok(()),
+        );
+        
+        // Verify the dish data was written correctly
+        let dish_data = accounts[0].data();
+        let stored_dish: Dish = bincode::deserialize(&dish_data[..std::mem::size_of::<Dish>()]).unwrap();
+        assert_eq!(stored_dish, dish);
+    }
+
+
 
     #[test]
     fn test_vote_process_instruction_decode_bail() {
