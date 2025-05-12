@@ -1,0 +1,22 @@
+[package]
+name = "solana_client_ext"
+version = "0.1.0"
+edition = "2021"
+keywords = ["solana", "rpc", "client", "transaction", "compute-units", "optimization"]
+categories = ["solana"] # Optional: Category for crates.io browsing
+
+[dependencies]
+solana-client = "2.2.2"
+solana-sdk = { version = "2.2.2", features = ["default"] }
+solana-program-runtime = "2.2.2"
+solana-compute-budget = "2.2.2"
+solana-svm="2.2.2"
+solana-bpf-loader-program = "2.2.2"
+solana-svm-transaction = "2.2.2"
+agave-feature-set = "2.2.2"
+solana-system-program = "2.2.2"
+solana-svm-callback = "0.0.0"
+
+
+[lib]
+path = "src/lib.rs"
